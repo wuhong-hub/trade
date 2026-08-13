@@ -24,7 +24,15 @@ def default_home():
 def cmd_update(args):
     home = default_home()
     conn = store.connect(home / "astock.db")
-    cons = pd.concat([fetcher.fetch_index_constituents(c) for c in INDEX_CODES])
+    parts = []
+    for c in INDEX_CODES:
+        try:
+            parts.append(fetcher.fetch_index_constituents(c))
+        except Exception as e:
+            print(f"[错误] 指数 {c} 成分股名单接口抓取失败：{e}")
+            print("       请检查网络，或升级 akshare 后重试：pip install -U akshare")
+            return 1
+    cons = pd.concat(parts)
     cons = cons.drop_duplicates("code").reset_index(drop=True)
     store.save_constituents(conn, cons)
     print(f"成分股：{len(cons)} 只（沪深300+中证500 去重）")
@@ -93,9 +101,13 @@ def cmd_recommend(args):
     print(f"策略迭代时间：{state['updated_at']}")
     for horizon, label in (("short", "短线（持有数天~两周）"), ("long", "长线（数月）")):
         s = summary[horizon]
+        if s["strategy"] is None:
+            print(f"\n=== {label} | 暂无有效策略（回测全部窗口无交易）===")
+            continue
+        extra = "（样本 0 笔，胜率按中性 50% 计）" if s.get("n_trades") == 0 else ""
         print(f"\n=== {label} | 策略 {s['strategy']} "
               f"(最近窗口: 胜率 {s['win_rate']:.0%} 年化 {s['annual_return']:.1%} "
-              f"最大回撤 {s['max_drawdown']:.1%}) ===")
+              f"最大回撤 {s['max_drawdown']:.1%}){extra} ===")
         if not recs[horizon]:
             print("  今日无符合条件的股票")
         for r in recs[horizon]:

@@ -33,3 +33,19 @@ def test_stale_data_warning(tmp_path, monkeypatch, capsys):
     assert rc == 0
     assert "update" in out          # 提示数据过旧
     assert "不构成投资建议" in out   # 固定声明
+
+
+def test_update_constituents_fetch_failure(tmp_path, monkeypatch, capsys):
+    """指数成分股名单接口失败：打印指明指数与升级建议，返回非零，不 traceback。"""
+    monkeypatch.setenv("ASTOCK_HOME", str(tmp_path))
+
+    def boom(code):
+        raise RuntimeError("ConnectionError: read timed out")
+
+    monkeypatch.setattr(cli.fetcher, "fetch_index_constituents", boom)
+    rc = cli.main(["update"])
+    out = capsys.readouterr().out
+    assert rc != 0
+    assert "000300" in out          # 指明是哪个指数接口失败
+    assert "akshare" in out         # 建议升级 akshare
+    assert "Traceback" not in out
