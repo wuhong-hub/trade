@@ -53,3 +53,33 @@ class _StubLong(_StubShort):
     class meta:
         name = "stub_long"
         horizon = "long"
+
+
+class _NoTradeShort:
+    class meta:
+        name = "no_trade_short"
+        horizon = "short"
+
+    def signals(self, bars):
+        return pd.Series(0, index=bars["date"])  # 从不发信号 → 全部窗口无交易
+
+
+class _NoTradeLong(_NoTradeShort):
+    class meta:
+        name = "no_trade_long"
+        horizon = "long"
+
+
+def test_run_iteration_best_none_when_all_scores_invalid(tmp_path, monkeypatch):
+    """某方向所有策略 score=-inf（全部窗口无交易）时 best 应为 None，而非列表首位。"""
+    conn = store.connect(tmp_path / "t.db")
+    store.save_constituents(conn, pd.DataFrame({"code": ["600000"], "name": ["浦发银行"]}))
+    start = (pd.Timestamp.today() - pd.Timedelta(days=900)).strftime("%Y-%m-%d")
+    store.upsert_bars(conn, "600000", make_bars([10 + 0.1 * i for i in range(600)],
+                                                start=start))
+    monkeypatch.setattr(rank, "ALL_STRATEGIES", [_NoTradeShort(), _NoTradeLong()])
+    state = rank.run_iteration(conn, tmp_path / "state.json", tmp_path / "history.jsonl")
+    assert state["best"]["short"] is None
+    assert state["best"]["long"] is None
+    saved = json.loads((tmp_path / "state.json").read_text())
+    assert saved["best"] == {"short": None, "long": None}

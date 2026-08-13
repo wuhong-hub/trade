@@ -44,7 +44,10 @@ def run_iteration(conn, state_path, history_path):
         ranking[h].sort(key=lambda e: e["score"], reverse=True)
     state = {
         "updated_at": datetime.now().isoformat(timespec="seconds"),
-        "best": {h: (ranking[h][0]["strategy"] if ranking[h] else None)
+        # 所有策略 score 均为 -inf（全部窗口无交易）时，该方向无有效策略
+        "best": {h: (ranking[h][0]["strategy"]
+                     if ranking[h] and ranking[h][0]["score"] > float("-inf")
+                     else None)
                  for h in ranking},
         "ranking": ranking,
     }

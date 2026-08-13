@@ -33,13 +33,22 @@ def generate_recommendations(conn, state, pool=None, top_n=10):
     summary = {}
     for horizon in ("short", "long"):
         best = state["best"][horizon]
+        if best is None:  # 该方向所有策略评分无效（全部窗口无交易）
+            summary[horizon] = {"strategy": None}
+            continue
         strat = STRATEGIES_BY_NAME[best]
         entry = next(e for e in state["ranking"][horizon]
                      if e["strategy"] == best)
-        last = entry["windows"][-1]
+        # 取最后一个有交易的窗口；与 rank.score 的口径一致（0 交易窗口无效）
+        last = next((w for w in reversed(entry["windows"]) if w["n_trades"] > 0),
+                    None)
+        if last is None:
+            # 全部窗口无交易：胜率按中性 0.5 处理，summary 标注 n_trades=0
+            last = dict(entry["windows"][-1], win_rate=0.5, n_trades=0)
         summary[horizon] = {"strategy": best, "win_rate": last["win_rate"],
                             "annual_return": last["annual_return"],
-                            "max_drawdown": last["max_drawdown"]}
+                            "max_drawdown": last["max_drawdown"],
+                            "n_trades": last["n_trades"]}
         for code, bars in pool.items():
             sigs = strat.signals(bars)
             if len(sigs) and sigs.iloc[-1] == 1:

@@ -27,9 +27,10 @@ def fake_env(tmp_path, monkeypatch, capsys):
 
     cons = pd.DataFrame({"code": ["600000", "000001"],
                          "name": ["浦发银行", "平安银行"]})
-    # 600000：稳定慢涨 + 末端放量新高（触发 momentum 买入）
+    # 600000：稳定慢涨；中段一次放量新高（让 momentum 在滚动窗口内完成真实交易，
+    # 否则所有短线策略 score=-inf，best 正确地为 None），末端再次放量新高触发买入
     up = [10 + 0.05 * i for i in range(500)] + [36.0]
-    up_vol = [1000] * 500 + [5000]
+    up_vol = [1000] * 490 + [5000] + [1000] * 9 + [5000]
     # 000001：横盘，不触发任何信号
     flat = [10.0] * 501
     data = {"600000": (up, up_vol), "000001": (flat, None)}
