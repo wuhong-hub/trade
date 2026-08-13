@@ -17,7 +17,7 @@ class VolumePriceStrategy(Strategy):
         vol_ma = df["volume"].rolling(20).mean()
         rebound = ((df["close"] > df["open"])
                    & (df["volume"] > 2 * vol_ma)).fillna(False)
-        buy = pullback.shift(1).fillna(False) & rebound
+        buy = pullback.shift(1, fill_value=False) & rebound
         ma10 = df["close"].rolling(10).mean()
         sell = ((df["close"] < ma10)
                 & (df["close"].shift(1) >= ma10.shift(1))).fillna(False)

@@ -27,8 +27,8 @@ class ValueStrategy(Strategy):
                  & (df["roe"] > ROE_BUY)
                  & (df["revenue_growth"] > 0)).fillna(False)
         expensive = ((df["pe"] > pe_q70) | (df["roe"] < ROE_SELL)).fillna(False)
-        buy = cheap & ~cheap.shift(1).fillna(False)          # 边沿触发
-        sell = expensive & ~expensive.shift(1).fillna(False)
+        buy = cheap & ~cheap.shift(1, fill_value=False)          # 边沿触发
+        sell = expensive & ~expensive.shift(1, fill_value=False)
         sig = pd.Series(0, index=df.index)
         sig[buy] = 1
         sig[sell] = -1
