@@ -8,7 +8,8 @@ def _seed(conn):
     store.upsert_pe(conn, "600000", pd.DataFrame({
         "date": pd.to_datetime(["2024-01-01"]), "pe": [15.0]}))
     store.upsert_financials(conn, "600000", pd.DataFrame({
-        "report_date": pd.to_datetime(["2023-12-31"]),
+        # +90 天公告滞后 ≈ 2023-12-29，早于全部 bars → 全区间可见
+        "report_date": pd.to_datetime(["2023-09-30"]),
         "roe": [12.0], "revenue_growth": [8.0]}))
 
 
@@ -20,6 +21,25 @@ def test_build_stock_bars_merges_pe_and_financials(tmp_path):
                                 "volume", "pe", "roe", "revenue_growth"]
     assert df["pe"].tolist() == [15.0, 15.0, 15.0]          # asof 前向填充
     assert df["roe"].tolist() == [12.0, 12.0, 12.0]
+
+
+def test_financials_invisible_before_announcement(tmp_path):
+    """财报按 report_date + 90 天的近似公告日合并，公告前不可见（前视偏差防护）。"""
+    conn = store.connect(tmp_path / "t.db")
+    # 70 个交易日横跨 2024-03-30（= 2023-12-31 + 90 天）
+    store.upsert_bars(conn, "600000", make_bars([10] * 70, start="2024-01-01"))
+    store.upsert_financials(conn, "600000", pd.DataFrame({
+        "report_date": pd.to_datetime(["2023-12-31"]),
+        "roe": [12.0], "revenue_growth": [8.0]}))
+    df = dataset.build_stock_bars(conn, "600000")
+    announce = pd.Timestamp("2023-12-31") + pd.Timedelta(
+        days=dataset.ANNOUNCEMENT_LAG_DAYS)
+    before = df[df["date"] < announce]
+    after = df[df["date"] >= announce]
+    assert len(before) and len(after)
+    assert before["roe"].isna().all()              # 公告日前不可见
+    assert (after["roe"] == 12.0).all()            # 公告日起前向填充
+    assert (after["revenue_growth"] == 8.0).all()
 
 
 def test_build_stock_bars_missing_aux_columns_are_nan(tmp_path):
