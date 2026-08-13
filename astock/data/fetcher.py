@@ -5,6 +5,10 @@ import pandas as pd
 
 RETRY = 3
 
+# 东财 stock_zh_a_hist 在本机网络下稳定被阻断；一旦重试耗尽失败过一次，
+# 同一进程内后续 fetch_daily_bars 调用直接走新浪降级路径，避免每次白等 3 次重试。
+_EM_HIST_DEAD = False
+
 
 def _retry(fn, **kwargs):
     last = None
@@ -36,22 +40,28 @@ def fetch_daily_bars(code, start_date, end_date=None):
     若东财接口重试 3 次后仍抛异常（如本机网络下被中间设备阻断），
     自动降级到新浪 ak.stock_zh_a_daily（symbol 加 sh/sz 前缀）。
     两条路径均重试 3 次，输出列契约一致：date/open/high/low/close/volume。
+    同一进程内东财一旦失败过一次（_EM_HIST_DEAD 置位），后续调用直接走新浪。
     """
+    global _EM_HIST_DEAD
     start = start_date.replace("-", "")
     end = (end_date or pd.Timestamp.today().strftime("%Y-%m-%d")).replace("-", "")
     cols = ["date", "open", "high", "low", "close", "volume"]
-    try:
-        df = _retry(ak.stock_zh_a_hist, symbol=code, period="daily",
-                    start_date=start, end_date=end, adjust="qfq")
-        if df is None or df.empty:
-            return pd.DataFrame(columns=cols)
-        df = df.rename(columns={"日期": "date", "开盘": "open", "最高": "high",
-                                "最低": "low", "收盘": "close", "成交量": "volume"})
-    except Exception:
-        df = _retry(ak.stock_zh_a_daily, symbol=_sina_symbol(code),
-                    start_date=start, end_date=end, adjust="qfq")
-        if df is None or df.empty:
-            return pd.DataFrame(columns=cols)
+    if not _EM_HIST_DEAD:
+        try:
+            df = _retry(ak.stock_zh_a_hist, symbol=code, period="daily",
+                        start_date=start, end_date=end, adjust="qfq")
+            if df is None or df.empty:
+                return pd.DataFrame(columns=cols)
+            df = df.rename(columns={"日期": "date", "开盘": "open", "最高": "high",
+                                    "最低": "low", "收盘": "close", "成交量": "volume"})
+            df["date"] = pd.to_datetime(df["date"])
+            return df[cols]
+        except Exception:
+            _EM_HIST_DEAD = True
+    df = _retry(ak.stock_zh_a_daily, symbol=_sina_symbol(code),
+                start_date=start, end_date=end, adjust="qfq")
+    if df is None or df.empty:
+        return pd.DataFrame(columns=cols)
     df["date"] = pd.to_datetime(df["date"])
     return df[cols]
 
