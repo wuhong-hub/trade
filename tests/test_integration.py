@@ -1,4 +1,6 @@
 import json
+from datetime import datetime
+
 import pandas as pd
 import pytest
 from astock import cli
@@ -6,11 +8,22 @@ from astock.data import fetcher
 from tests.conftest import make_bars
 
 
+class _FixedDatetime(datetime):
+    """固定"今天"为 mock 行情区间内的日期，使推荐的 rec_date 之后仍有 bars，
+    report 才能统计到该推荐。"""
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls(2025, 11, 15)
+
+
 @pytest.fixture
 def fake_env(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("ASTOCK_HOME", str(tmp_path))
     monkeypatch.setattr(fetcher.time, "sleep", lambda s: None)
     monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    # mock 行情最后一根 bar 为 2025-12-01，rec_date 需早于它
+    monkeypatch.setattr(cli, "datetime", _FixedDatetime)
 
     cons = pd.DataFrame({"code": ["600000", "000001"],
                          "name": ["浦发银行", "平安银行"]})
@@ -52,6 +65,7 @@ def test_full_flow(fake_env, tmp_path, capsys):
     assert cli.main(["recommend"]) == 0
     out = capsys.readouterr().out
     assert "不构成投资建议" in out
+    assert "600000" in out  # momentum 策略应命中 600000，推荐清单非空
 
     # 再 update 一次（模拟次日新数据），report 应有评估结果
     assert cli.main(["update"]) == 0
@@ -59,3 +73,4 @@ def test_full_flow(fake_env, tmp_path, capsys):
     assert cli.main(["report"]) == 0
     out = capsys.readouterr().out
     assert "历史推荐" in out
+    assert "历史推荐 0 条" not in out  # 推荐已落库，报告不应为空
