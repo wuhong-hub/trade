@@ -1,3 +1,5 @@
+import datetime
+
 import pandas as pd
 import pytest
 from astock.data import fetcher
@@ -17,8 +19,16 @@ class FakeAk:
             "收盘": [10.2, 11.2], "成交量": [10000, 12000],
         })
 
-    def stock_a_indicator_lg(self, symbol):
-        return pd.DataFrame({"trade_date": ["2024-01-02"], "pe": [15.0], "total_mv": [1e10]})
+    def stock_zh_a_daily(self, symbol, start_date, end_date, adjust):
+        assert adjust == "qfq"
+        return pd.DataFrame({
+            "date": [datetime.date(2024, 1, 2), datetime.date(2024, 1, 3)],
+            "open": [10.0, 11.0], "high": [10.5, 11.5], "low": [9.5, 10.5],
+            "close": [10.2, 11.2], "volume": [10000, 12000],
+        })
+
+    def stock_value_em(self, symbol):
+        return pd.DataFrame({"数据日期": ["2024-01-02"], "PE(TTM)": ["15.0"], "总市值": [1e10]})
 
     def stock_financial_analysis_indicator(self, symbol, start_year):
         return pd.DataFrame({
@@ -47,6 +57,39 @@ def test_fetch_daily_bars_columns(fake_ak):
     assert pd.api.types.is_datetime64_any_dtype(df["date"])
 
 
+def test_fetch_daily_bars_fallback_to_sina(monkeypatch):
+    """东财 stock_zh_a_hist 抛异常时降级到新浪 stock_zh_a_daily。"""
+    seen = {}
+
+    class DeadEmAk:
+        def stock_zh_a_hist(self, symbol, period, start_date, end_date, adjust):
+            raise ConnectionError("blocked")
+
+        def stock_zh_a_daily(self, symbol, start_date, end_date, adjust):
+            seen["symbol"] = symbol
+            seen["start_date"] = start_date
+            return pd.DataFrame({
+                "date": [datetime.date(2024, 1, 2)],
+                "open": [10.0], "high": [10.5], "low": [9.5],
+                "close": [10.2], "volume": [10000],
+            })
+
+    monkeypatch.setattr(fetcher, "ak", DeadEmAk())
+    monkeypatch.setattr(fetcher.time, "sleep", lambda s: None)
+    df = fetcher.fetch_daily_bars("600000", "2024-01-01")
+    assert list(df.columns) == ["date", "open", "high", "low", "close", "volume"]
+    assert df["close"].tolist() == [10.2]
+    assert pd.api.types.is_datetime64_any_dtype(df["date"])
+    assert seen["symbol"] == "sh600000"  # 6 开头加 sh 前缀
+    assert seen["start_date"] == "20240101"
+
+
+def test_sina_symbol_prefix():
+    assert fetcher._sina_symbol("600000") == "sh600000"
+    assert fetcher._sina_symbol("000001") == "sz000001"
+    assert fetcher._sina_symbol("300750") == "sz300750"
+
+
 def test_fetch_pe_series(fake_ak):
     df = fetcher.fetch_pe_series("600000")
     assert list(df.columns) == ["date", "pe"]
@@ -64,11 +107,11 @@ def test_retry_on_failure(monkeypatch):
     calls = {"n": 0}
 
     class FlakyAk:
-        def stock_a_indicator_lg(self, symbol):
+        def stock_value_em(self, symbol):
             calls["n"] += 1
             if calls["n"] < 3:
                 raise ConnectionError("boom")
-            return pd.DataFrame({"trade_date": ["2024-01-02"], "pe": [15.0]})
+            return pd.DataFrame({"数据日期": ["2024-01-02"], "PE(TTM)": ["15.0"]})
 
     monkeypatch.setattr(fetcher, "ak", FlakyAk())
     monkeypatch.setattr(fetcher.time, "sleep", lambda s: None)
@@ -79,7 +122,7 @@ def test_retry_on_failure(monkeypatch):
 
 def test_retry_exhausted_raises(monkeypatch):
     class BadAk:
-        def stock_a_indicator_lg(self, symbol):
+        def stock_value_em(self, symbol):
             raise ConnectionError("always fails")
 
     monkeypatch.setattr(fetcher, "ak", BadAk())

@@ -25,27 +25,50 @@ def fetch_index_constituents(index_code="000300"):
     return out.reset_index(drop=True)
 
 
+def _sina_symbol(code):
+    """新浪日线接口要求带市场前缀：6 开头 -> sh，其余 -> sz。"""
+    return ("sh" if code.startswith("6") else "sz") + code
+
+
 def fetch_daily_bars(code, start_date, end_date=None):
+    """获取 A 股日 K（前复权），首选东财 ak.stock_zh_a_hist。
+
+    若东财接口重试 3 次后仍抛异常（如本机网络下被中间设备阻断），
+    自动降级到新浪 ak.stock_zh_a_daily（symbol 加 sh/sz 前缀）。
+    两条路径均重试 3 次，输出列契约一致：date/open/high/low/close/volume。
+    """
     start = start_date.replace("-", "")
     end = (end_date or pd.Timestamp.today().strftime("%Y-%m-%d")).replace("-", "")
-    df = _retry(ak.stock_zh_a_hist, symbol=code, period="daily",
-                start_date=start, end_date=end, adjust="qfq")
     cols = ["date", "open", "high", "low", "close", "volume"]
-    if df is None or df.empty:
-        return pd.DataFrame(columns=cols)
-    df = df.rename(columns={"日期": "date", "开盘": "open", "最高": "high",
-                            "最低": "low", "收盘": "close", "成交量": "volume"})
+    try:
+        df = _retry(ak.stock_zh_a_hist, symbol=code, period="daily",
+                    start_date=start, end_date=end, adjust="qfq")
+        if df is None or df.empty:
+            return pd.DataFrame(columns=cols)
+        df = df.rename(columns={"日期": "date", "开盘": "open", "最高": "high",
+                                "最低": "low", "收盘": "close", "成交量": "volume"})
+    except Exception:
+        df = _retry(ak.stock_zh_a_daily, symbol=_sina_symbol(code),
+                    start_date=start, end_date=end, adjust="qfq")
+        if df is None or df.empty:
+            return pd.DataFrame(columns=cols)
     df["date"] = pd.to_datetime(df["date"])
     return df[cols]
 
 
 def fetch_pe_series(code):
-    df = _retry(ak.stock_a_indicator_lg, symbol=code)
+    """获取个股 PE(TTM) 序列。
+
+    akshare 1.18.84 已移除 ak.stock_a_indicator_lg，
+    改用东财估值接口 ak.stock_value_em（symbol 为 6 位代码，无市场前缀）。
+    """
+    df = _retry(ak.stock_value_em, symbol=code)
     if df is None or df.empty:
         return pd.DataFrame(columns=["date", "pe"])
-    df = df.rename(columns={"trade_date": "date"})
-    df["date"] = pd.to_datetime(df["date"])
-    return df[["date", "pe"]]
+    return pd.DataFrame({
+        "date": pd.to_datetime(df["数据日期"]),
+        "pe": pd.to_numeric(df["PE(TTM)"], errors="coerce"),
+    })
 
 
 def fetch_financials(code, start_year="2021"):
