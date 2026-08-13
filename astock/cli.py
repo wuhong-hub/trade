@@ -36,18 +36,28 @@ def cmd_update(args):
     cons = cons.drop_duplicates("code").reset_index(drop=True)
     store.save_constituents(conn, cons)
     print(f"成分股：{len(cons)} 只（沪深300+中证500 去重）")
-    earliest = (pd.Timestamp.today() - pd.DateOffset(years=HISTORY_YEARS)).strftime("%Y-%m-%d")
+    years = args.years if getattr(args, "years", None) else HISTORY_YEARS
+    backfill_from = pd.Timestamp.today() - pd.DateOffset(years=years)
+    earliest = backfill_from.strftime("%Y-%m-%d")
+    start_year = str(backfill_from.year)
     ok, failed = 0, []
     for i, code in enumerate(cons["code"], 1):
         try:
             last = store.last_bar_date(conn, code)
-            start = earliest if last is None else (
-                pd.Timestamp(last) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+            if getattr(args, "years", None):
+                start = earliest  # --years 回填：强制从 N 年前抓，upsert 幂等
+            else:
+                start = earliest if last is None else (
+                    pd.Timestamp(last) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
             bars = fetcher.fetch_daily_bars(code, start)
             if len(bars):
                 store.upsert_bars(conn, code, bars)
             store.upsert_pe(conn, code, fetcher.fetch_pe_series(code))
-            store.upsert_financials(conn, code, fetcher.fetch_financials(code))
+            if getattr(args, "years", None):
+                fin = fetcher.fetch_financials(code, start_year)
+            else:
+                fin = fetcher.fetch_financials(code)
+            store.upsert_financials(conn, code, fin)
             ok += 1
         except Exception as e:
             failed.append(code)
@@ -144,7 +154,9 @@ def cmd_report(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="astock", description="A股量化策略推荐工具")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("update", help="增量更新行情与财务数据")
+    p_update = sub.add_parser("update", help="增量更新行情与财务数据")
+    p_update.add_argument("--years", type=int, default=None, metavar="N",
+                          help="回填 N 年历史数据（默认增量更新，不回填）")
     sub.add_parser("iterate", help="滚动回测并优选策略")
     sub.add_parser("recommend", help="输出当前最优策略的推荐")
     sub.add_parser("report", help="历史推荐效果跟踪")

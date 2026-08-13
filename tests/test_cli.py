@@ -35,6 +35,37 @@ def test_stale_data_warning(tmp_path, monkeypatch, capsys):
     assert "不构成投资建议" in out   # 固定声明
 
 
+def test_update_years_backfill(tmp_path, monkeypatch, capsys):
+    """--years N：强制从 N 年前开始抓取（回填），financials 的 start_year 同步前移。"""
+    monkeypatch.setenv("ASTOCK_HOME", str(tmp_path))
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+    cons = pd.DataFrame({"code": ["600000"], "name": ["浦发银行"]})
+    monkeypatch.setattr(cli.fetcher, "fetch_index_constituents",
+                        lambda index_code="000300": cons.copy())
+    calls = {"bars": [], "fin": []}
+
+    def fake_bars(code, start_date, end_date=None):
+        calls["bars"].append(start_date)
+        return make_bars([10.0] * 5, start="2024-01-01")
+
+    def fake_fin(code, start_year="2021"):
+        calls["fin"].append(start_year)
+        return pd.DataFrame({"report_date": pd.to_datetime(["2024-01-01"]),
+                             "roe": [12.0], "revenue_growth": [8.0]})
+
+    monkeypatch.setattr(cli.fetcher, "fetch_daily_bars", fake_bars)
+    monkeypatch.setattr(cli.fetcher, "fetch_pe_series", lambda code: pd.DataFrame({
+        "date": pd.to_datetime(["2024-01-01"]), "pe": [15.0]}))
+    monkeypatch.setattr(cli.fetcher, "fetch_financials", fake_fin)
+
+    rc = cli.main(["update", "--years", "10"])
+    assert rc == 0
+    assert calls["bars"]
+    start_year = pd.Timestamp(calls["bars"][0]).year
+    assert pd.Timestamp.today().year - start_year >= 9  # 约 10 年前
+    assert calls["fin"] == [str((pd.Timestamp.today() - pd.DateOffset(years=10)).year)]
+
+
 def test_update_constituents_fetch_failure(tmp_path, monkeypatch, capsys):
     """指数成分股名单接口失败：打印指明指数与升级建议，返回非零，不 traceback。"""
     monkeypatch.setenv("ASTOCK_HOME", str(tmp_path))
