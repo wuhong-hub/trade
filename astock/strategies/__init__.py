@@ -1,4 +1,5 @@
 from .ma_trend import MATrendStrategy
+from .ma_trend_vol import MATrendVolStrategy
 from .momentum import MomentumStrategy
 from .value import ValueStrategy
 from .volume_price import VolumePriceStrategy
@@ -6,6 +7,7 @@ from .volume_price import VolumePriceStrategy
 ALL_STRATEGIES = [
     MomentumStrategy(),
     MATrendStrategy(),
+    MATrendVolStrategy(),
     VolumePriceStrategy(),
     ValueStrategy(),
 ]
