@@ -12,16 +12,16 @@ def _sig(bars, buy_i):
 
 def test_short_max_hold_exit():
     # 每天 open=close=10+i（严格上涨）。index 0 买入信号 → index 1 开盘 11 买入；
-    # 持有满 10 天（index 11）按收盘 21 卖出。
-    bars = make_bars([10 + i for i in range(15)])
+    # 持有满 15 天（index 16）按收盘 26 卖出。
+    bars = make_bars([10 + i for i in range(20)])
     trades = engine.simulate_trades("X", bars, _sig(bars, 0), "short")
     assert len(trades) == 1
     t = trades[0]
     assert t.entry_price == 11.0
-    assert t.exit_price == 21.0
-    assert t.holding_days == 10
-    assert t.gross_ret == pytest.approx(21 / 11 - 1)
-    assert t.net_ret == pytest.approx(21 / 11 - 1 - engine.COST)
+    assert t.exit_price == 26.0
+    assert t.holding_days == 15
+    assert t.gross_ret == pytest.approx(26 / 11 - 1)
+    assert t.net_ret == pytest.approx(26 / 11 - 1 - engine.COST)
 
 
 def test_short_stop_loss():

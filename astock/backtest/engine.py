@@ -6,7 +6,7 @@ COMMISSION = 0.0003   # 单边佣金
 STAMP_TAX = 0.001     # 卖出印花税
 COST = COMMISSION * 2 + STAMP_TAX  # 单次往返成本 0.0016
 
-SHORT_MAX_HOLD = 10
+SHORT_MAX_HOLD = 15
 SHORT_STOP = 0.93     # -7% 止损
 
 
