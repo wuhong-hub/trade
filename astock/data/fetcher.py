@@ -1,9 +1,14 @@
+import socket
 import time
 
 import akshare as ak
 import pandas as pd
 
 RETRY = 3
+
+# akshare 多数接口未显式传 timeout，本机网络中间设备会丢包导致 requests
+# 无限期挂起（实测 2 小时无响应）。设置全局默认超时兜底，超时后走 _retry 重试。
+socket.setdefaulttimeout(20)
 
 # 东财 stock_zh_a_hist 在本机网络下稳定被阻断；一旦重试耗尽失败过一次，
 # 同一进程内后续 fetch_daily_bars 调用直接走新浪降级路径，避免每次白等 3 次重试。
