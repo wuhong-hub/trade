@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+import pandas as pd
+
 from ..backtest.engine import SHORT_STOP
 from ..data.dataset import build_pool_bars
 from ..data.store import load_constituents, load_index_daily
@@ -21,8 +23,30 @@ class Rec:
     exit_hint: str
 
 
-def position_pct(win_rate):
-    return round(min(15.0, max(5.0, 10.0 + (win_rate - 0.5) * 20)), 1)
+RISK_PCT = 0.5        # 单票风险敞口占净值比例（%），等额风险仓位
+MAX_POSITION_PCT = 15.0
+
+
+def atr14(bars):
+    """最新 ATR14（TR 的 14 日均值）。数据不足返回 None。"""
+    if len(bars) < 15:
+        return None
+    h, l, c = bars["high"], bars["low"], bars["close"]
+    prev_c = c.shift(1)
+    tr = pd.concat([h - l, (h - prev_c).abs(), (l - prev_c).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(14).mean().iloc[-1]
+    return None if pd.isna(atr) or atr <= 0 else float(atr)
+
+
+def position_pct(price, atr):
+    """等额风险仓位：单票仓位% = RISK_PCT × 现价 ÷ ATR14，上限 MAX_POSITION_PCT。
+
+    含义：若价格反向波动一个 ATR，该票亏损 ≈ 净值的 RISK_PCT%。
+    波动越大的票仓位越小。ATR 缺失时按中性 10% 处理。
+    """
+    if atr is None:
+        return 10.0
+    return round(min(MAX_POSITION_PCT, RISK_PCT * price / atr), 1)
 
 
 def index_regime(conn, ma=60):
@@ -75,6 +99,6 @@ def generate_recommendations(conn, state, pool=None, top_n=10):
                 recs[horizon].append(Rec(
                     code, names.get(code, ""), horizon, best,
                     strat.reason(bars, bars["date"].iloc[-1]), price,
-                    position_pct(last["win_rate"]), stop, strat.exit_hint()))
+                    position_pct(price, atr14(bars)), stop, strat.exit_hint()))
         recs[horizon] = recs[horizon][:top_n]
     return recs, summary

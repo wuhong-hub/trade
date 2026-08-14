@@ -7,10 +7,17 @@ from tests.conftest import make_bars
 
 
 def test_position_pct_rule():
-    assert engine.position_pct(0.5) == 10.0
-    assert engine.position_pct(0.75) == 15.0   # 封顶
-    assert engine.position_pct(0.25) == 5.0    # 封底
-    assert engine.position_pct(0.6) == pytest.approx(12.0)
+    """等额风险仓位：0.5% × 现价 ÷ ATR14，封顶 15%，ATR 缺失按中性 10%。"""
+    assert engine.position_pct(100.0, 10.0) == 5.0     # 0.5×100/10
+    assert engine.position_pct(100.0, 2.0) == 15.0     # 封顶
+    assert engine.position_pct(100.0, None) == 10.0    # ATR 缺失回退
+
+
+def test_atr14():
+    # 前 39 天横盘（TR=0.2），最后一天 10→101 跳空（TR=92.01）
+    atr = engine.atr14(make_bars([10] * 39 + [101]))
+    assert atr == pytest.approx((13 * 0.2 + 92.01) / 14)
+    assert engine.atr14(make_bars([10] * 10)) is None  # 数据不足
 
 
 def _state(best_short="stub_short", win_rate=0.6):
@@ -78,7 +85,7 @@ def test_generate_recommendations(tmp_path, monkeypatch):
     assert r.code == "600000" and r.name == "浦发银行"
     assert r.price == 101.0
     assert r.stop_price == round(101.0 * 0.90, 2)   # 短线给数值止损
-    assert r.position_pct == pytest.approx(12.0)     # win_rate=0.6
+    assert r.position_pct == pytest.approx(7.5)      # 等额风险：0.5×101/ATR14(≈6.76)
     assert r.reason == "测试理由"
     assert summary["short"]["strategy"] == "stub_short"
     assert summary["short"]["win_rate"] == 0.6
@@ -96,7 +103,8 @@ def test_uses_last_window_with_trades(tmp_path, monkeypatch):
     recs, summary = engine.generate_recommendations(conn, state, pool=pool)
     assert summary["short"]["win_rate"] == 0.7
     assert summary["short"]["n_trades"] == 5
-    assert recs["short"][0].position_pct == pytest.approx(14.0)  # 10+(0.7-0.5)*20
+    # 仓位由 ATR 等额风险决定，与胜率无关
+    assert recs["short"][0].position_pct == pytest.approx(7.5)
 
 
 def test_all_windows_no_trades_uses_neutral_win_rate(tmp_path, monkeypatch):
@@ -109,7 +117,7 @@ def test_all_windows_no_trades_uses_neutral_win_rate(tmp_path, monkeypatch):
     recs, summary = engine.generate_recommendations(conn, state, pool=pool)
     assert summary["short"]["win_rate"] == 0.5
     assert summary["short"]["n_trades"] == 0
-    assert recs["short"][0].position_pct == 10.0   # 中性仓位
+    assert recs["short"][0].position_pct == pytest.approx(7.5)   # ATR 等额风险仓位
 
 
 def test_best_none_outputs_empty(tmp_path, monkeypatch):
