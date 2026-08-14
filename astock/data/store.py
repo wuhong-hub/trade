@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS financials(
     PRIMARY KEY(code, report_date));
 CREATE TABLE IF NOT EXISTS constituents(
     code TEXT PRIMARY KEY, name TEXT, updated_at TEXT);
+CREATE TABLE IF NOT EXISTS index_daily(
+    code TEXT NOT NULL, date TEXT NOT NULL, close REAL,
+    PRIMARY KEY(code, date));
 CREATE TABLE IF NOT EXISTS recommendations(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     rec_date TEXT, code TEXT, name TEXT, horizon TEXT, strategy TEXT,
@@ -84,6 +87,21 @@ def load_financials(conn, code):
         "SELECT report_date, roe, revenue_growth FROM financials "
         "WHERE code=? ORDER BY report_date", conn, params=(code,))
     df["report_date"] = pd.to_datetime(df["report_date"])
+    return df
+
+
+def upsert_index_daily(conn, code, df):
+    rows = [(code, d.strftime("%Y-%m-%d"), float(r.close))
+            for d, r in zip(df["date"], df.itertuples())]
+    conn.executemany("INSERT OR REPLACE INTO index_daily VALUES(?,?,?)", rows)
+    conn.commit()
+
+
+def load_index_daily(conn, code="sh000300"):
+    df = pd.read_sql(
+        "SELECT date, close FROM index_daily WHERE code=? ORDER BY date",
+        conn, params=(code,))
+    df["date"] = pd.to_datetime(df["date"])
     return df
 
 

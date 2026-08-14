@@ -37,6 +37,10 @@ def fake_env(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(fetcher, "fetch_index_constituents",
                         lambda index_code="000300": cons.copy())
+    # 牛市形态指数日线：regime=bull，短线推荐不受过滤影响
+    monkeypatch.setattr(fetcher, "fetch_index_daily", lambda symbol="sh000300":
+                        pd.DataFrame({"date": pd.bdate_range("2024-01-01", periods=80),
+                                      "close": [float(100 + i) for i in range(80)]}))
 
     def fake_bars(code, start_date, end_date=None):
         closes, vols = data[code]

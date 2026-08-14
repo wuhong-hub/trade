@@ -36,6 +36,12 @@ def cmd_update(args):
     cons = cons.drop_duplicates("code").reset_index(drop=True)
     store.save_constituents(conn, cons)
     print(f"成分股：{len(cons)} 只（沪深300+中证500 去重）")
+    try:
+        idx = fetcher.fetch_index_daily("sh000300")
+        store.upsert_index_daily(conn, "sh000300", idx)
+        print(f"沪深300 指数日线：{len(idx)} 行")
+    except Exception as e:
+        print(f"  [警告] 沪深300 指数日线抓取失败：{e}（regime 过滤将沿用旧数据）")
     years = args.years if getattr(args, "years", None) else HISTORY_YEARS
     backfill_from = pd.Timestamp.today() - pd.DateOffset(years=years)
     earliest = backfill_from.strftime("%Y-%m-%d")
@@ -114,10 +120,16 @@ def cmd_recommend(args):
         if s["strategy"] is None:
             print(f"\n=== {label} | 暂无有效策略（回测全部窗口无交易）===")
             continue
+        if s.get("regime") == "bear":
+            print(f"\n=== {label} | 沪深300 位于 60 日均线下方，空仓观望 ===")
+            continue
         extra = "（样本 0 笔，胜率按中性 50% 计）" if s.get("n_trades") == 0 else ""
+        regime_note = " | 指数位于 60 日均线上方" if s.get("regime") == "bull" else ""
         print(f"\n=== {label} | 策略 {s['strategy']} "
               f"(最近窗口: 胜率 {s['win_rate']:.0%} 年化 {s['annual_return']:.1%} "
-              f"最大回撤 {s['max_drawdown']:.1%}){extra} ===")
+              f"最大回撤 {s['max_drawdown']:.1%}){extra}{regime_note} ===")
+        if s.get("regime") == "unknown":
+            print("  （指数数据不足，未启用趋势过滤）")
         if not recs[horizon]:
             print("  今日无符合条件的股票")
         for r in recs[horizon]:

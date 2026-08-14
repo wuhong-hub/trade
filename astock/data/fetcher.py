@@ -89,6 +89,18 @@ def fetch_daily_bars(code, start_date, end_date=None):
     return df[cols]
 
 
+def fetch_index_daily(symbol="sh000300"):
+    """抓取指数日线（新浪接口），返回 date/close 两列的 DataFrame。"""
+    df = _retry(ak.stock_zh_index_daily, symbol=symbol)
+    if df is None or df.empty:
+        return pd.DataFrame(columns=["date", "close"])
+    out = pd.DataFrame({
+        "date": pd.to_datetime(df["date"]),
+        "close": pd.to_numeric(df["close"], errors="coerce"),
+    })
+    return out.dropna(subset=["date", "close"]).reset_index(drop=True)
+
+
 def fetch_pe_series(code):
     """获取个股 PE(TTM) 序列。
 
