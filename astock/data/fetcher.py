@@ -1,3 +1,4 @@
+import signal
 import socket
 import time
 
@@ -7,8 +8,20 @@ import pandas as pd
 RETRY = 3
 
 # akshare 多数接口未显式传 timeout，本机网络中间设备会丢包导致 requests
-# 无限期挂起（实测 2 小时无响应）。设置全局默认超时兜底，超时后走 _retry 重试。
+# 无限期挂起（实测 2 小时无响应）。setdefaulttimeout 对 urllib3 不生效，
+# 故保留之余，在 _retry 内用 SIGALRM 做每次调用的硬超时。
 socket.setdefaulttimeout(20)
+
+CALL_TIMEOUT = 30  # 单次接口调用的硬超时（秒）
+
+
+class _CallTimeout(Exception):
+    pass
+
+
+def _alarm_handler(signum, frame):
+    raise _CallTimeout()
+
 
 # 东财 stock_zh_a_hist 在本机网络下稳定被阻断；一旦重试耗尽失败过一次，
 # 同一进程内后续 fetch_daily_bars 调用直接走新浪降级路径，避免每次白等 3 次重试。
@@ -19,7 +32,12 @@ def _retry(fn, **kwargs):
     last = None
     for i in range(RETRY):
         try:
-            return fn(**kwargs)
+            signal.signal(signal.SIGALRM, _alarm_handler)
+            signal.alarm(CALL_TIMEOUT)
+            try:
+                return fn(**kwargs)
+            finally:
+                signal.alarm(0)
         except Exception as e:  # akshare 底层异常类型不稳定，统一捕获重试
             last = e
             time.sleep(1 + i)
