@@ -77,7 +77,7 @@ def test_generate_recommendations(tmp_path, monkeypatch):
     assert isinstance(r, Rec)
     assert r.code == "600000" and r.name == "浦发银行"
     assert r.price == 101.0
-    assert r.stop_price == round(101.0 * 0.93, 2)   # 短线给数值止损
+    assert r.stop_price == round(101.0 * 0.90, 2)   # 短线给数值止损
     assert r.position_pct == pytest.approx(12.0)     # win_rate=0.6
     assert r.reason == "测试理由"
     assert summary["short"]["strategy"] == "stub_short"

@@ -7,7 +7,7 @@ STAMP_TAX = 0.001     # 卖出印花税
 COST = COMMISSION * 2 + STAMP_TAX  # 单次往返成本 0.0016
 
 SHORT_MAX_HOLD = 15
-SHORT_STOP = 0.93     # -7% 止损
+SHORT_STOP = 0.90     # -10% 止损（10 年逐年验证优于 -7%，见 variant_study）
 
 
 @dataclass

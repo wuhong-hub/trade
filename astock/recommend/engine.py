@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from ..backtest.engine import SHORT_STOP
 from ..data.dataset import build_pool_bars
 from ..data.store import load_constituents, load_index_daily
 from ..strategies import STRATEGIES_BY_NAME
@@ -70,7 +71,7 @@ def generate_recommendations(conn, state, pool=None, top_n=10):
             sigs = strat.signals(bars)
             if len(sigs) and sigs.iloc[-1] == 1:
                 price = float(bars["close"].iloc[-1])
-                stop = round(price * 0.93, 2) if horizon == "short" else None
+                stop = round(price * SHORT_STOP, 2) if horizon == "short" else None
                 recs[horizon].append(Rec(
                     code, names.get(code, ""), horizon, best,
                     strat.reason(bars, bars["date"].iloc[-1]), price,

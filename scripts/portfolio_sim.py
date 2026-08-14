@@ -18,7 +18,7 @@ from astock.strategies import STRATEGIES_BY_NAME
 
 BUY_FEE = 0.0003          # 买入佣金
 SELL_FEE = 0.0013         # 卖出佣金+印花税
-DEFAULT_STOP = 0.07       # 默认 -7% 止损（等价于旧常量 STOP=0.93）
+DEFAULT_STOP = 0.10       # 默认 -10% 止损（与主程序 SHORT_STOP 一致）
 DEFAULT_HOLD = 15         # 默认持有上限（交易日）
 MAX_POS = 10              # 最多同时持仓数
 POS_PCT = 0.10            # 单票仓位占净值比例

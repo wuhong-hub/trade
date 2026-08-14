@@ -25,13 +25,13 @@ def test_short_max_hold_exit():
 
 
 def test_short_stop_loss():
-    # 买入后次日 low 击穿 entry*0.93 → 按 entry*0.93 止损。
+    # 买入后次日 low 击穿 entry*0.90 → 按 entry*0.90 止损。
     bars = make_bars([100, 100, 90, 90, 90], opens=[100, 100, 90, 90, 90])
-    bars.loc[2, "low"] = 92.0  # entry=100，93 止损线被击穿
+    bars.loc[2, "low"] = 89.0  # entry=100，90 止损线被击穿
     trades = engine.simulate_trades("X", bars, _sig(bars, 0), "short")
     assert len(trades) == 1
-    assert trades[0].exit_price == 93.0
-    assert trades[0].net_ret == pytest.approx(-0.07 - engine.COST)
+    assert trades[0].exit_price == 90.0
+    assert trades[0].net_ret == pytest.approx(-0.10 - engine.COST)
 
 
 def test_long_exits_only_on_sell_signal():
