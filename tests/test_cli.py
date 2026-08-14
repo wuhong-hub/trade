@@ -147,3 +147,32 @@ def test_recommend_regime_no_index_data(tmp_path, monkeypatch, capsys):
     assert rc == 0
     assert "未启用趋势过滤" in out
     assert "600000" in out
+
+
+def test_quote_command(monkeypatch, capsys):
+    monkeypatch.setattr(cli.fetcher, "fetch_index_spot", lambda symbol: {
+        "code": "sh000300", "name": "沪深300", "price": 4668.47,
+        "prev_close": 4663.95, "open": None, "high": None, "low": None,
+        "volume": 0, "amount": 0, "date": None, "time": None})
+    monkeypatch.setattr(cli.fetcher, "fetch_spot_quotes", lambda codes:
+                        pd.DataFrame([{"code": "300475", "name": "香农芯创",
+                                       "price": 160.90, "prev_close": 157.43,
+                                       "open": 161.50, "high": 163.18,
+                                       "low": 157.60, "volume": 1, "amount": 1,
+                                       "date": "2026-08-14", "time": "14:14:30"}]))
+    rc = cli.main(["quote", "300475"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "沪深300" in out and "4668.47" in out
+    assert "香农芯创" in out and "160.90" in out and "+2.20%" in out
+
+
+def test_quote_command_index_only(monkeypatch, capsys):
+    monkeypatch.setattr(cli.fetcher, "fetch_index_spot", lambda symbol: {
+        "code": "sh000300", "name": "沪深300", "price": 4668.47,
+        "prev_close": 4663.95, "open": None, "high": None, "low": None,
+        "volume": 0, "amount": 0, "date": None, "time": None})
+    rc = cli.main(["quote"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "沪深300" in out

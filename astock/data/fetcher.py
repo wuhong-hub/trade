@@ -1,6 +1,7 @@
 import signal
 import socket
 import time
+import urllib.request
 
 import akshare as ak
 import pandas as pd
@@ -114,6 +115,77 @@ def fetch_pe_series(code):
         "date": pd.to_datetime(df["数据日期"]),
         "pe": pd.to_numeric(df["PE(TTM)"], errors="coerce"),
     })
+
+
+SPOT_URL = "http://hq.sinajs.cn/list={symbols}"
+SPOT_CHUNK = 50  # 新浪行情单次请求的股票数上限（经验值）
+
+
+def _fetch_spot_raw(symbols):
+    """新浪实时行情原始文本。注意必须用 http + Referer：本机 CA 证书过期
+    https 校验失败，且该接口无 Referer 返回 403。行情为公开数据，无敏感信息。"""
+    req = urllib.request.Request(
+        SPOT_URL.format(symbols=",".join(symbols)),
+        headers={"Referer": "https://finance.sina.com.cn"})
+    return urllib.request.urlopen(req, timeout=20).read().decode("gbk")
+
+
+def _parse_spot(text):
+    """解析新浪行情文本。股票: 名称,今开,昨收,现价,最高,最低,买一,卖一,成交量,成交额,...,日期,时间
+    指数(s_前缀): 名称,现价,涨跌,涨幅%,成交量(手),成交额(万)"""
+    rows = []
+    for line in text.strip().splitlines():
+        if "=" not in line:
+            continue
+        var, _, payload = line.partition("=")
+        symbol = var.replace("var hq_str_", "").strip()
+        fields = payload.strip().strip(";").strip('"').split(",")
+        if symbol.startswith("s_"):  # 指数简表
+            if len(fields) >= 6 and fields[0]:
+                rows.append({"code": symbol[2:], "name": fields[0],
+                             "price": float(fields[1]),
+                             "prev_close": float(fields[1]) - float(fields[2]),
+                             "open": None, "high": None, "low": None,
+                             "volume": float(fields[4]),
+                             "amount": float(fields[5]) * 1e4,
+                             "date": None, "time": None})
+        else:
+            if len(fields) >= 32 and fields[0]:
+                rows.append({"code": symbol[2:], "name": fields[0],
+                             "open": float(fields[1]),
+                             "prev_close": float(fields[2]),
+                             "price": float(fields[3]),
+                             "high": float(fields[4]), "low": float(fields[5]),
+                             "volume": float(fields[8]),
+                             "amount": float(fields[9]),
+                             "date": fields[30], "time": fields[31]})
+    return rows
+
+
+def fetch_spot_quotes(codes):
+    """批量实时报价（交易时间内秒级刷新，收盘后为当日收盘价）。
+
+    codes 为 6 位代码列表，返回 DataFrame：
+    code/name/price/prev_close/open/high/low/volume/amount/date/time。
+    """
+    rows = []
+    codes = [str(c).zfill(6) for c in codes]
+    for i in range(0, len(codes), SPOT_CHUNK):
+        symbols = [_sina_symbol(c) for c in codes[i:i + SPOT_CHUNK]]
+        rows.extend(_parse_spot(_retry(_fetch_spot_raw, symbols=symbols)))
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    return df[df["code"].isin(codes)].reset_index(drop=True)  # 过滤意外行
+
+
+def fetch_index_spot(symbol="sh000300"):
+    """指数实时点位（名称/现价/涨跌/涨幅/量额），返回单行 dict。"""
+    rows = [r for r in _parse_spot(_retry(_fetch_spot_raw, symbols=["s_" + symbol]))
+            if r["code"] == symbol]
+    if not rows:
+        raise RuntimeError(f"指数 {symbol} 实时行情解析为空")
+    return rows[0]
 
 
 def fetch_financials(code, start_year="2021"):

@@ -163,6 +163,24 @@ def cmd_report(args):
     return 0
 
 
+def cmd_quote(args):
+    """实时报价（新浪，交易时间内秒级刷新）。无参数时只显示指数。"""
+    idx = fetcher.fetch_index_spot("sh000300")
+    idx_chg = idx["price"] / idx["prev_close"] - 1
+    print(f"{idx['name']}  {idx['price']:.2f}  {idx_chg:+.2%}")
+    if args.codes:
+        df = fetcher.fetch_spot_quotes(args.codes)
+        if df.empty:
+            print("未取到个股行情")
+            return 1
+        for r in df.itertuples():
+            chg = r.price / r.prev_close - 1 if r.prev_close else 0.0
+            print(f"{r.code} {r.name}  现价 {r.price:.2f}  {chg:+.2%}  "
+                  f"今开 {r.open:.2f}  最高 {r.high:.2f}  最低 {r.low:.2f}  "
+                  f"（{r.date} {r.time}）")
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="astock", description="A股量化策略推荐工具")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -172,9 +190,13 @@ def main(argv=None):
     sub.add_parser("iterate", help="滚动回测并优选策略")
     sub.add_parser("recommend", help="输出当前最优策略的推荐")
     sub.add_parser("report", help="历史推荐效果跟踪")
+    p_quote = sub.add_parser("quote", help="实时报价（指数+指定个股）")
+    p_quote.add_argument("codes", nargs="*", metavar="CODE",
+                         help="6 位股票代码，可多个；不填只显示沪深300")
     args = parser.parse_args(argv)
     return {"update": cmd_update, "iterate": cmd_iterate,
-            "recommend": cmd_recommend, "report": cmd_report}[args.command](args)
+            "recommend": cmd_recommend, "report": cmd_report,
+            "quote": cmd_quote}[args.command](args)
 
 
 if __name__ == "__main__":
